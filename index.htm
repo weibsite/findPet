@@ -322,7 +322,8 @@
                 bounds: [ [23.009222, 120.255556], [23.007889, 120.259528] ],
                 mainPhoto: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80",
                 photos: ["https://images.unsplash.com/photo-1543466835-00a7907e9de1", "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e"],
-                videos: []
+                videos: [],
+                announcement: "【阿妹協尋】\n請大家在台南地區多加留意，如果有看到疑似阿妹的身影，請不要驚擾，立即聯絡我們！\n重點熱區：台南公園周邊。"
             },
             "烏尼": { 
                 name: "找烏尼", 
@@ -331,7 +332,8 @@
                 bounds: [ [25.058413, 121.489253], [25.058575, 121.489066] ],
                 mainPhoto: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80",
                 photos: ["https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba"],
-                videos: []
+                videos: [],
+                announcement: "【烏尼協尋】\n烏尼生性膽小，請各位志工在三重地區周圍小巷多多留意，如有發現請保持距離並回報，感謝大家的幫忙！"
             }
         };
 
@@ -349,9 +351,11 @@
         projectSelect.value = currentProjectKey;
 
         let allAnnouncements = {};
+        Object.keys(PROJECTS).forEach(key => {
+            allAnnouncements[key] = PROJECTS[key].announcement || "目前無最新公告。";
+        });
         
-        let allCenterMarkers = [];
-        let activeBoundsRectangle = null;
+        let boundsRectangle = null, centerMarker = null;
 
         // --- 狀態變數 ---
         let map, markersLayer, sightingsLayer, routesLayer;
@@ -525,7 +529,7 @@
             document.getElementById('announcement-panel').classList.remove('hidden');
             document.getElementById('admin-current-proj').innerText = `針對: ${currentProjectKey}`;
             
-            const ann = allAnnouncements[currentProjectKey] || "目前無最新公告。";
+            const ann = allAnnouncements[currentProjectKey] || proj.announcement || "目前無最新公告。";
             document.getElementById('announcement-text').innerHTML = escapeHTML(ann).replace(/\n/g, '<br>');
             applyAnnouncePanelCollapseState();
         }
@@ -2261,7 +2265,7 @@
         
         document.getElementById('update-announce-btn').addEventListener('click', () => {
             if(!isAdmin) return;
-            let currentRawText = allAnnouncements[currentProjectKey] || "";
+            let currentRawText = allAnnouncements[currentProjectKey] || PROJECTS[currentProjectKey].announcement || "";
             showInputModal(`📢 更新「${PROJECTS[currentProjectKey].name}」公告`, "請輸入最新的公告內容...", currentRawText, (text) => {
                 allAnnouncements[currentProjectKey] = text; 
                 if(isSystemReady) {
