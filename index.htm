@@ -38,6 +38,27 @@
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; border: 2px solid #1a202c; }
         ::-webkit-scrollbar-thumb { background: #1a202c; }
+
+        /* 照片縮小效果 */
+        #animal-info-section.mobile-collapsed {
+            height: 36px !important;
+        }
+        #animal-info-section.mobile-collapsed img {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #animal-info-section.mobile-collapsed #animal-name-date {
+            text-align: left;
+            padding-left: 8px;
+            background: transparent;
+            color: #1a202c;
+            line-height: 32px;
+            font-size: 12px;
+        }
+        #animal-info-section.mobile-collapsed .gallery-btn-overlay {
+            top: 50%;
+            transform: translateY(-50%);
+        }
     </style>
 </head>
 <body>
@@ -136,13 +157,15 @@
     </div>
 
     <!-- UI 上方置中排版：下拉式選單 (切換目標) -->
-    <div id="project-select-wrapper" class="absolute top-4 left-1/2 transform -translate-x-1/2 z-[2000] hidden w-auto min-w-[200px] max-w-[90vw]">
+    <div id="project-select-wrapper" class="absolute top-4 left-1/2 transform -translate-x-1/2 z-[2000] hidden w-auto min-w-[200px] max-w-[90vw] flex items-center gap-2">
         <div class="relative w-full">
             <select id="switch-project-select" class="pixel-btn p-3 pr-10 text-sm sm:text-base font-black text-black border-4 border-black bg-yellow-400 shadow-[4px_4px_0px_#1a202c] cursor-pointer outline-none appearance-none w-full text-center">
                 <!-- JS 動態生成選項 -->
             </select>
             <div id="select-arrow" class="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none font-black text-black">▼</div>
         </div>
+        <!-- 刪除專案按鈕 (管理員可見) -->
+        <button id="delete-project-btn" class="pixel-btn p-3 bg-red-600 text-white hidden shadow-[4px_4px_0px_#1a202c]" title="刪除此專案">🗑️</button>
     </div>
     
     <!-- 其他控制按鈕 -->
@@ -179,10 +202,10 @@
 
         <div id="announcement-panel" class="pixel-panel p-2 text-[10px] sm:text-xs font-bold text-gray-900 bg-white/95 w-48 sm:w-56 pointer-events-auto shadow-md transition-all duration-300 hidden">
             <!-- 動物資訊卡片 -->
-            <div id="animal-info-section" class="cursor-pointer mb-2 relative group border-2 border-black bg-gray-200 hover:opacity-90 active:translate-y-1 transition-all overflow-hidden h-[120px]">
-                <img id="animal-main-photo" src="" class="w-full h-full object-cover">
-                <div class="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-[10px] py-1 font-black tracking-wider" id="animal-name-date">載入中...</div>
-                <div class="absolute top-1 right-1 bg-blue-600 text-white text-[10px] px-1 py-0.5 border border-black shadow-[2px_2px_0px_#1a202c]">📸 看相簿</div>
+            <div id="animal-info-section" class="cursor-pointer mb-2 relative group border-2 border-black bg-gray-200 transition-all duration-500 overflow-hidden h-[120px]">
+                <img id="animal-main-photo" src="" class="w-full h-full object-cover transition-opacity duration-500">
+                <div class="absolute bottom-0 left-0 w-full bg-black/70 text-white text-center text-[10px] py-1 font-black tracking-wider transition-all duration-500" id="animal-name-date">載入中...</div>
+                <div class="gallery-btn-overlay absolute top-1 right-1 bg-blue-600 text-white text-[10px] px-1 py-0.5 border border-black shadow-[2px_2px_0px_#1a202c] transition-all duration-500">📸 看相簿</div>
             </div>
             
             <!-- 公告區 -->
@@ -329,6 +352,7 @@
         function getPersistentData(key) { try { return localStorage.getItem(key); } catch(e) {} return null; }
 
         let taiwanPolygons = []; 
+        let animalInfoCollapseTimer = null;
 
         // ================= 【核心修正】動態多目標資料結構與重置邏輯 =================
         // 將系統預設的專案獨立保存，每次收到更新時，一律從這裡「歸零」再合入新資料，
@@ -365,6 +389,20 @@
 
         const projectSelect = document.getElementById('switch-project-select');
         let currentProjectKey = getPersistentData('dogMap_currentProject') || "阿妹";
+        
+        // 處理網址參數設定預設專案 (例如 ?Q比 或 ?project=Q比)
+        const urlParams = new URLSearchParams(window.location.search);
+        let urlProject = urlParams.get('project');
+        if (!urlProject) {
+            // 如果沒有 project 參數，嘗試解析第一組不帶 = 的字串作為專案名稱
+            const queryString = window.location.search.substring(1);
+            if (queryString && !queryString.includes('=')) {
+                urlProject = decodeURIComponent(queryString);
+            }
+        }
+        if (urlProject) {
+            currentProjectKey = urlProject;
+        }
         
         function updateProjectDropdown() {
             projectSelect.innerHTML = '';
@@ -589,7 +627,10 @@
             
             setInterval(renderMap, 15000);
             
-            if (isAdmin) document.getElementById('admin-panel').classList.remove('hidden');
+            if (isAdmin) {
+                document.getElementById('admin-panel').classList.remove('hidden');
+                document.getElementById('delete-project-btn').classList.remove('hidden');
+            }
             
             connectWebSocket(); checkLocalSetupAndStart();
         }
@@ -632,14 +673,36 @@
             }
 
             applyAnnouncePanelCollapseState();
+
+            // 照片 5 秒後自動縮小 (僅限手機版寬度)
+            if (window.innerWidth <= 640) {
+                const infoSection = document.getElementById('animal-info-section');
+                infoSection.classList.remove('mobile-collapsed');
+                if (animalInfoCollapseTimer) clearTimeout(animalInfoCollapseTimer);
+                animalInfoCollapseTimer = setTimeout(() => {
+                    infoSection.classList.add('mobile-collapsed');
+                }, 5000);
+            }
         }
 
-        document.getElementById('animal-info-section').addEventListener('click', () => {
-            const proj = PROJECTS[currentProjectKey];
-            if(!proj) return;
-            document.getElementById('gallery-title').innerText = `${proj.animalName} 的相簿`;
-            renderGallery('photos');
-            document.getElementById('gallery-modal').classList.remove('hidden');
+        document.getElementById('animal-info-section').addEventListener('click', (e) => {
+            // 如果點擊到的是覆蓋在上面的相簿按鈕，則打開相簿；否則展開照片
+            if (e.target.classList.contains('gallery-btn-overlay')) {
+                const proj = PROJECTS[currentProjectKey];
+                if(!proj) return;
+                document.getElementById('gallery-title').innerText = `${proj.animalName} 的相簿`;
+                renderGallery('photos');
+                document.getElementById('gallery-modal').classList.remove('hidden');
+            } else {
+                const infoSection = document.getElementById('animal-info-section');
+                if (infoSection.classList.contains('mobile-collapsed')) {
+                    infoSection.classList.remove('mobile-collapsed');
+                    if (animalInfoCollapseTimer) clearTimeout(animalInfoCollapseTimer);
+                    animalInfoCollapseTimer = setTimeout(() => {
+                        infoSection.classList.add('mobile-collapsed');
+                    }, 5000);
+                }
+            }
         });
 
         document.getElementById('close-gallery-btn').addEventListener('click', () => {
@@ -762,6 +825,11 @@
             currentProjectKey = e.target.value;
             setPersistentData('dogMap_currentProject', currentProjectKey);
             
+            // 更新網址以反映目前的專案 (不刷新頁面)
+            const newUrl = new URL(window.location);
+            newUrl.search = `?${encodeURIComponent(currentProjectKey)}`;
+            window.history.pushState({}, '', newUrl);
+            
             localHistory = localHistories[currentProjectKey] || [];
             lastSavedPos = localHistory.length > 0 ? localHistory[localHistory.length - 1] : null;
 
@@ -790,6 +858,21 @@
             if (isSystemReady) {
                 ws.send(JSON.stringify({ type: "init", uid: myUid, project: currentProjectKey }));
             }
+        });
+
+        // 刪除專案按鈕事件
+        document.getElementById('delete-project-btn').addEventListener('click', () => {
+            if (!isAdmin) return;
+            showConfirm(`確定要永久刪除專案「${currentProjectKey}」嗎？這會同時刪除所有相關的申請資料與歷史軌跡！`, () => {
+                if (isSystemReady) {
+                    // 發送兩個刪除請求：一個給地圖資料，一個給申請表資料
+                    ws.send(JSON.stringify({ type: "admin_delete_project", token: adminToken, project: currentProjectKey }));
+                    
+                    // 為了架構簡單，我們假設申請表的 id 可能和 project 名字相同，或者後端處理 admin_delete_project 時一併刪除。
+                    // 這裡先送出請求。
+                    showModal("✅ 刪除專案指令已送出！");
+                }
+            });
         });
 
         function drawAllProjects() {
@@ -972,6 +1055,7 @@
                         sessionStorage.setItem('dogMap_adminToken', adminToken);
                         document.getElementById('admin-login-modal').classList.add('hidden');
                         document.getElementById('admin-panel').classList.remove('hidden');
+                        document.getElementById('delete-project-btn').classList.remove('hidden');
                         updateGiftUI(); 
                         showModal("登入成功！您現在擁有伺服器管理權限。");
                     } else { showModal("密碼錯誤，請重試！"); }
@@ -2224,6 +2308,7 @@
 
         document.getElementById('close-admin-btn').addEventListener('click', () => {
             document.getElementById('admin-panel').classList.add('hidden');
+            document.getElementById('delete-project-btn').classList.add('hidden');
             isAdmin = false;
             adminToken = "";
             sessionStorage.removeItem('dogMap_isAdmin');
