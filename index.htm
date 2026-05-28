@@ -29,6 +29,7 @@
         @keyframes blink-pixel { 0% { background-color: #ef4444; transform: scale(1); } 100% { background-color: #fca5a5; transform: scale(1.3); } }
         @keyframes pulse-square { 0% { transform: scale(0.5); opacity: 1; border-width: 4px; } 100% { transform: scale(4); opacity: 0; border-width: 1px; } }
         @keyframes marquee-scroll { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
         
         .center-pulse-square { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; border: 4px solid #ef4444; box-sizing: border-box; animation: pulse-square 2s infinite linear; pointer-events: none; }
         .animate-marquee-text { display: inline-block; white-space: nowrap; animation: marquee-scroll 20s linear infinite; }
@@ -46,7 +47,7 @@
     <div id="startup-overlay" class="absolute inset-0 z-[3000] bg-black/70 flex items-center justify-center transition-opacity duration-300">
         <div class="pixel-panel p-6 w-11/12 max-w-md text-center transform transition-transform">
             <h2 class="text-2xl font-bold text-gray-900 mb-2">尋寵地圖</h2>
-            <p class="text-gray-700 mb-4 text-sm font-bold">▶ 其他縣市可以按左下觀看模式觀看 ◀<br><br>請輸入稱呼並允許定位，您的移動將以像素方塊驅散周圍迷霧！<br><br><span class="text-red-500 text-xs">⚠️ 建議使用 Safari / Chrome 瀏覽器開啟，<br>以免從 LINE 開啟會造成紀錄遺失！</span></p>
+            <p class="text-gray-700 mb-4 text-sm font-bold">▶ 縮放地圖可觀看所有動物的搜尋狀況 ◀<br><br>請輸入稱呼並允許定位，您的移動將以像素方塊驅散周圍迷霧！<br><br><span class="text-red-500 text-xs">⚠️ 建議使用 Safari / Chrome 瀏覽器開啟，<br>以免從 LINE 開啟會造成紀錄遺失！</span></p>
             <input type="text" id="user-name-input" maxlength="15" placeholder="暱稱 (留空則隨機)" class="pixel-input w-full p-3 text-lg mb-4 text-center text-gray-900" />
             <button id="master-start-btn" class="pixel-btn w-full py-4 px-4 text-lg">開始 [暫時授權定位]</button>
             <div id="error-msg" class="hidden"></div>
@@ -116,28 +117,6 @@
         </div>
     </div>
 
-    <!-- 行動版圖片裁切 Modal -->
-    <div id="image-crop-modal" class="hidden absolute inset-0 z-[10500] bg-black/95 flex flex-col items-center justify-center p-4">
-        <div class="pixel-panel p-4 w-full max-w-sm flex flex-col items-center">
-            <h3 class="text-gray-900 font-bold mb-2 text-lg">✂️ 拖曳縮放與裁切</h3>
-            <p class="text-xs text-red-600 font-bold mb-3 border-b-2 border-black pb-1 w-full text-center">請拖曳圖片對齊中央方框</p>
-            
-            <div class="relative w-[250px] h-[250px] border-4 border-black overflow-hidden bg-gray-200 mb-4 cursor-move touch-none" id="crop-container">
-                <canvas id="crop-canvas" width="250" height="250" class="absolute top-0 left-0"></canvas>
-                <!-- 裁切基準線輔助視覺 -->
-                <div class="absolute inset-0 pointer-events-none border-2 border-dashed border-gray-800 opacity-30 shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]"></div>
-            </div>
-            
-            <input type="range" id="crop-zoom-slider" min="0.1" max="3" step="0.01" value="1" class="w-full mb-4 cursor-pointer">
-            
-            <div class="flex gap-2 w-full">
-                <button id="crop-cancel-btn" class="pixel-btn flex-1 py-2 bg-gray-400">取消</button>
-                <button id="crop-confirm-btn" class="pixel-btn flex-1 py-2 bg-blue-500 text-white">確定裁切</button>
-            </div>
-        </div>
-    </div>
-
-
     <!-- 個人設定 Modal -->
     <div id="profile-modal" class="hidden absolute inset-0 z-[9000] bg-black/80 flex items-center justify-center p-4">
         <div class="pixel-panel p-6 w-full max-w-sm text-center">
@@ -189,7 +168,6 @@
         <button id="pb-speed" class="pixel-btn px-3 py-2 text-sm bg-green-500 text-white" title="加倍速度前進">&gt;</button>
         <button id="pb-end" class="pixel-btn px-3 py-2 text-sm bg-blue-500 text-white" title="直接完成">&gt;&gt;</button>
     </div>
-
 
     <!-- 右上角：線上狀態與動物卡片 / 公告區 -->
     <div class="absolute top-[80px] right-4 sm:top-4 sm:right-4 z-[3000] flex flex-col items-end gap-3 pointer-events-none">
@@ -371,7 +349,9 @@
         projectSelect.value = currentProjectKey;
 
         let allAnnouncements = {};
-        let boundsRectangle = null, centerMarker = null;
+        
+        let allCenterMarkers = [];
+        let activeBoundsRectangle = null;
 
         // --- 狀態變數 ---
         let map, markersLayer, sightingsLayer, routesLayer;
@@ -417,6 +397,7 @@
         let slotTimer = null;
         let isMapInteracting = false;
         let mapInteractionTimer = null;
+        let viewportFetchTimer = null;
 
         let isAnnounceCollapsed = localStorage.getItem('dogMap_announceCollapsed') === 'true';
 
@@ -502,11 +483,27 @@
                 isMapInteracting = true;
                 if (mapInteractionTimer) clearTimeout(mapInteractionTimer);
             });
-            map.on('dragend zoomend mouseup touchend', () => {
+            
+            // 監聽拖曳結束與縮放結束，分段讀取範圍資料
+            map.on('moveend zoomend mouseup touchend', () => {
                 mapInteractionTimer = setTimeout(() => { isMapInteracting = false; }, 15000); 
+                
+                // 【空間加載 / Viewport Fetch】
+                if (viewportFetchTimer) clearTimeout(viewportFetchTimer);
+                viewportFetchTimer = setTimeout(() => {
+                    if (isSystemReady) {
+                        const b = map.getBounds();
+                        // 送出畫面四角座標給伺服器，要求傳回範圍內的資料 (需後端 API 配合)
+                        ws.send(JSON.stringify({ 
+                            type: "get_viewport_data", 
+                            bounds: { n: b.getNorth(), s: b.getSouth(), e: b.getEast(), w: b.getWest() } 
+                        }));
+                    }
+                    renderMap(); // 重新渲染當前畫面內的使用者
+                }, 500);
             });
 
-            drawProjectBounds(); 
+            drawAllProjects(); 
             updateAnimalInfoCard();
 
             map.createPane('fogPane'); map.getPane('fogPane').style.zIndex = 450; map.getPane('fogPane').style.pointerEvents = 'none';
@@ -569,7 +566,7 @@
             }
         }
 
-        // ================= 切換目標邏輯 =================
+        // ================= 切換目標邏輯 (共用地圖) =================
         projectSelect.addEventListener('change', (e) => {
             localHistories[currentProjectKey] = localHistory;
             currentProjectKey = e.target.value;
@@ -579,7 +576,11 @@
             lastSavedPos = localHistory.length > 0 ? localHistory[localHistory.length - 1] : null;
 
             updateAnimalInfoCard();
-            drawProjectBounds();
+            drawAllProjects();
+            
+            // 自動飛往新目標
+            const proj = PROJECTS[currentProjectKey];
+            map.flyToBounds(proj.bounds, {padding: [50, 50], animate: true});
             
             if (isMyRouteMode) {
                 isMyRouteMode = false;
@@ -590,7 +591,7 @@
                 myRouteBtn.innerText = "🐍 我的軌跡"; myRouteBtn.style.backgroundColor = "#a855f7"; myRouteBtn.style.color = "white";
                 if (!isFogVisible) {
                     isFogVisible = true;
-                    const fogPane = map ? map.getPane('fogPane') : null;
+                    const fogPane = map.getPane('fogPane');
                     if(fogPane) fogPane.style.display = 'block';
                     const toggleFogBtn = document.getElementById('toggle-fog-btn');
                     toggleFogBtn.innerText = "👁️ 關閉迷霧"; toggleFogBtn.style.backgroundColor = "#f59e0b";
@@ -598,27 +599,59 @@
             }
             
             if (isSystemReady) {
-                // 重新請求伺服器同步新專案
                 ws.send(JSON.stringify({ type: "init", uid: myUid, project: currentProjectKey }));
             }
-            showModal(`✅ 已切換至「${PROJECTS[currentProjectKey].name}」！\n地圖範圍、獎池與公告已更新。`);
+            showModal(`✅ 已切換至「${PROJECTS[currentProjectKey].name}」！\n由於共用地圖，您仍可看見周圍其他動物的探索狀況。`);
         });
 
-        function drawProjectBounds() {
-            if (boundsRectangle) map.removeLayer(boundsRectangle);
-            if (centerMarker) map.removeLayer(centerMarker);
+        // 渲染所有專案的中心點 (點擊可切換)
+        function drawAllProjects() {
+            allCenterMarkers.forEach(m => map.removeLayer(m));
+            allCenterMarkers = [];
+            
+            if (activeBoundsRectangle) {
+                map.removeLayer(activeBoundsRectangle);
+                activeBoundsRectangle = null;
+            }
 
-            const proj = PROJECTS[currentProjectKey];
-            const center = [(proj.bounds[0][0] + proj.bounds[1][0]) / 2, (proj.bounds[0][1] + proj.bounds[1][1]) / 2];
-            const iconSymbol = currentProjectKey === '烏尼' ? '🐈' : '🐕';
+            Object.keys(PROJECTS).forEach(key => {
+                const proj = PROJECTS[key];
+                const center = [(proj.bounds[0][0] + proj.bounds[1][0]) / 2, (proj.bounds[0][1] + proj.bounds[1][1]) / 2];
+                const isCurrent = (key === currentProjectKey);
+                
+                const iconSymbol = key === '烏尼' ? '🐈' : '🐕'; 
+                
+                let markerHtml = '';
+                if (isCurrent) {
+                    markerHtml = `<div style="position: absolute;"><div class="center-pulse-square" style="border-color: #ef4444;"></div></div>
+                                  <div class="user-label-container" style="bottom: 12px; cursor: pointer; pointer-events: auto;">
+                                      <div class="user-name-tag pixel-panel" style="color: white; background-color: #ef4444; border-color: #1a202c; z-index: 10;">📍 ${key}</div>
+                                      <div style="font-size: 32px; filter: drop-shadow(2px 2px 0px #1a202c); position: relative; z-index: 10; animation: bounce 2s infinite;">${iconSymbol}</div>
+                                  </div>`;
+                } else {
+                    markerHtml = `<div class="user-label-container" style="bottom: 12px; cursor: pointer; pointer-events: auto; opacity: 0.8;">
+                                      <div class="user-name-tag pixel-panel" style="color: #1a202c; background-color: #e5e7eb; border-color: #1a202c; z-index: 10;">點擊找 ${key}</div>
+                                      <div style="font-size: 24px; filter: drop-shadow(2px 2px 0px #1a202c); position: relative; z-index: 10;">${iconSymbol}</div>
+                                  </div>`;
+                }
 
-            const centerIcon = L.divIcon({ className: 'custom-div-icon', html: `<div style="position: absolute;"><div class="center-pulse-square"></div></div><div class="user-label-container" style="bottom: 12px;"><div class="user-name-tag pixel-panel" style="color: white; background-color: #ef4444; border-color: #1a202c; z-index: 10;">📍 ${currentProjectKey}走失中心點</div><div style="font-size: 24px; filter: drop-shadow(2px 2px 0px #1a202c); position: relative; z-index: 10;">${iconSymbol}</div></div>`, iconSize: [0, 0], iconAnchor: [0, 0] });
-            centerMarker = L.marker(center, { icon: centerIcon, zIndexOffset: 100 }).addTo(map);
+                const centerIcon = L.divIcon({ className: 'custom-div-icon', html: markerHtml, iconSize: [0, 0], iconAnchor: [0, 0] });
+                const marker = L.marker(center, { icon: centerIcon, zIndexOffset: isCurrent ? 2000 : 500 }).addTo(map);
 
-            boundsRectangle = L.rectangle(proj.bounds, {color: "#ef4444", weight: 3, fillOpacity: 0.2, dashArray: '5, 10'}).addTo(map)
-             .bindPopup(`<div class="font-bold text-center">📍 ${proj.name} 搜尋範圍</div>`, {className: 'pixel-popup'});
+                marker.on('click', () => {
+                    if (!isCurrent) {
+                        document.getElementById('switch-project-select').value = key;
+                        document.getElementById('switch-project-select').dispatchEvent(new Event('change'));
+                    }
+                });
 
-            map.flyToBounds(proj.bounds, {padding: [50, 50], animate: true});
+                allCenterMarkers.push(marker);
+
+                if (isCurrent) {
+                    activeBoundsRectangle = L.rectangle(proj.bounds, {color: "#ef4444", weight: 3, fillOpacity: 0.1, dashArray: '5, 10'}).addTo(map)
+                     .bindPopup(`<div class="font-bold text-center">📍 ${proj.name} 搜尋範圍</div>`, {className: 'pixel-popup'});
+                }
+            });
         }
         
         function updateStepsCounter() {
@@ -675,9 +708,8 @@
                 // 處理增量更新
                 if (response.type === 'user_appended') {
                     const uid = response.uid;
-                    if (response.project !== currentProjectKey) return;
-                    
                     const inData = response.data;
+                    
                     if (!allUsersData[uid]) allUsersData[uid] = { userName: inData.userName, color: inData.color, project: response.project, history: [] };
                     else { allUsersData[uid].userName = inData.userName; allUsersData[uid].color = inData.color; }
                     
@@ -687,10 +719,8 @@
                 }
                 
                 if (response.type === 'user_update') {
-                    if (response.project === currentProjectKey) {
-                        allUsersData[response.uid] = response.data;
-                        renderMap();
-                    }
+                    allUsersData[response.uid] = response.data;
+                    renderMap();
                     return;
                 }
 
@@ -1022,11 +1052,12 @@
             const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2); return 6371e3 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
-        // ================= 渲染地圖與迷霧 (與原版相同) =================
+        // ================= 渲染地圖與迷霧 (共用地圖) =================
         function renderMap() {
-            if (!markersLayer) return;
+            if (!markersLayer || !map) return;
             markersLayer.clearLayers(); 
             const now = Date.now();
+            const currentBounds = map.getBounds().pad(0.5); // 擴大渲染範圍，避免邊邊突然消失
             
             if (isMyRouteMode) {
                 const targetData = allUsersData[targetRouteUid];
@@ -1084,12 +1115,15 @@
             let onlineUserCount = 0;
             Object.keys(allUsersData).forEach(uid => {
                 const userData = allUsersData[uid]; if (!userData.history || userData.history.length === 0) return;
-                if (userData.project !== currentProjectKey) return;
                 
                 const isSelf = (uid === myUid); 
                 if (isSpectatorMode && isSelf) return;
 
                 const lastPoint = userData.history[userData.history.length - 1];
+                
+                // 【空間過濾器】: 只渲染在畫面範圍內的使用者標記
+                if (!currentBounds.contains([lastPoint.lat, lastPoint.lng])) return;
+
                 if (now - lastPoint.timestamp < 60 * 60 * 1000) { 
                     onlineUserCount++;
                     const safeUserName = escapeHTML(userData.userName);
@@ -1126,26 +1160,30 @@
         function renderSightings() {
             if (!sightingsLayer) return; sightingsLayer.clearLayers();
             Object.values(allSightings).forEach(data => {
-                if (data.project !== currentProjectKey) return;
                 const d = new Date(data.timestamp); const dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
                 const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${data.lat},${data.lng}`;
                 const safeDesc = escapeHTML(data.description);
                 const rawDesc = data.description || "";
                 const shortTitle = rawDesc.length > 6 ? rawDesc.substring(0, 6) + "..." : rawDesc;
                 const safeShortTitle = escapeHTML(shortTitle);
+                
+                // 若不是目前的專案，打上標籤
+                const projectTag = data.project && data.project !== currentProjectKey ? ` <span class="text-[10px] bg-gray-200 px-1">(${escapeHTML(data.project)})</span>` : '';
 
-                const icon = L.divIcon({ className: 'custom-div-icon', html: `<div class="user-label-container" style="bottom: 12px;"><div class="user-name-tag pixel-panel" style="color: #1a202c; background-color: #fef08a; border-color: #1a202c; animation: blink-pixel 2s infinite alternate;">⚠️ ${safeShortTitle}</div><div style="font-size: 28px; filter: drop-shadow(2px 2px 0px #1a202c); position: relative; z-index: 10;">🐾</div></div>`, iconSize: [0, 0], iconAnchor: [0, 0] });
+                const icon = L.divIcon({ className: 'custom-div-icon', html: `<div class="user-label-container" style="bottom: 12px;"><div class="user-name-tag pixel-panel" style="color: #1a202c; background-color: #fef08a; border-color: #1a202c; animation: blink-pixel 2s infinite alternate;">⚠️ ${safeShortTitle}${projectTag}</div><div style="font-size: 28px; filter: drop-shadow(2px 2px 0px #1a202c); position: relative; z-index: 10;">🐾</div></div>`, iconSize: [0, 0], iconAnchor: [0, 0] });
                 const marker = L.marker([data.lat, data.lng], { icon, zIndexOffset: 3000 }).addTo(sightingsLayer);
                 marker.bindPopup(`<div class="p-2 w-48 font-bold text-gray-900"><div class="border-b-2 border-black pb-1 mb-2 text-sm text-blue-600">🕒 時間：${dateStr}</div><div class="text-sm mb-4 whitespace-pre-wrap leading-relaxed">${safeDesc}</div><a href="${gmapsUrl}" target="_blank" class="pixel-btn block text-center py-2 text-xs bg-blue-500 text-white shadow-[4px_4px_0px_#1a202c] no-underline" style="color: white !important;">🚀 開啟 Google 導航</a></div>`, { className: 'pixel-popup', closeButton: true, offset: [0, -30] });
             });
         }
+        
         function renderRoutes() {
             if (!routesLayer) return; routesLayer.clearLayers();
             Object.values(allRoutes).forEach(r => {
-                if (r.project !== currentProjectKey || !r.points) return;
+                if (!r.points) return;
                 const safeName = escapeHTML(r.name);
+                const projectTag = r.project && r.project !== currentProjectKey ? ` (${escapeHTML(r.project)})` : '';
                 const polyline = L.polyline(r.points, { color: r.color || '#ff0000', weight: r.weight || 5, opacity: 0.9 }).addTo(routesLayer);
-                polyline.bindPopup(`<div class="font-bold text-center text-sm p-1 text-gray-900 border-b-2 border-black mb-1">${safeName}</div>`, { className: 'pixel-popup' });
+                polyline.bindPopup(`<div class="font-bold text-center text-sm p-1 text-gray-900 border-b-2 border-black mb-1">${safeName}${projectTag}</div>`, { className: 'pixel-popup' });
             });
         }
 
@@ -1153,15 +1191,36 @@
             fogCanvas = document.createElement('canvas'); map.getPane('fogPane').appendChild(fogCanvas); fogCtx = fogCanvas.getContext('2d');
             lowResCanvas = document.createElement('canvas'); lowResCtx = lowResCanvas.getContext('2d');
             tempCanvas = document.createElement('canvas'); tempCtx = tempCanvas.getContext('2d');
-            function resizeCanvas() { fogCanvas.width = window.innerWidth; fogCanvas.height = window.innerHeight; L.DomUtil.setPosition(fogCanvas, map.containerPointToLayerPoint([0, 0])); requestFogRender(); }
-            window.addEventListener('resize', resizeCanvas); map.on('move zoom', resizeCanvas); resizeCanvas();
+            
+            function resizeCanvas() { 
+                const size = map.getSize();
+                fogCanvas.width = size.x; 
+                fogCanvas.height = size.y; 
+                lowResCanvas.width = Math.ceil(size.x * FOG_SCALE);
+                lowResCanvas.height = Math.ceil(size.y * FOG_SCALE);
+                tempCanvas.width = lowResCanvas.width;
+                tempCanvas.height = lowResCanvas.height;
+                updateCanvasPosition(); 
+            }
+            
+            // 【無閃爍核心】：拖曳地圖時，只更新 Canvas 的相對位置與重繪，絕對不重設 Canvas.width (會導致自動清空)
+            function updateCanvasPosition() {
+                const topLeft = map.containerPointToLayerPoint([0, 0]);
+                L.DomUtil.setPosition(fogCanvas, topLeft);
+                requestFogRender();
+            }
+
+            window.addEventListener('resize', resizeCanvas); 
+            map.on('zoomend', resizeCanvas); 
+            map.on('move', updateCanvasPosition);
+            resizeCanvas();
         }
         function requestFogRender() { if (!fogRenderPending) { fogRenderPending = true; requestAnimationFrame(() => { if(isFogVisible) renderFog(); fogRenderPending = false; }); } }
         
         function renderFog() {
             if (!map || !fogCtx || !isFogVisible) return;
             const w = Math.ceil(fogCanvas.width * FOG_SCALE), h = Math.ceil(fogCanvas.height * FOG_SCALE);
-            lowResCanvas.width = w; lowResCanvas.height = h; tempCanvas.width = w; tempCanvas.height = h;
+            
             lowResCtx.fillStyle = 'rgba(15, 20, 25, 0.9)'; lowResCtx.fillRect(0, 0, w, h);
             
             const now = Date.now(), center = map.getCenter();
@@ -1181,7 +1240,7 @@
                 if (isMyRouteMode && uid !== targetRouteUid) return; 
                 
                 const userData = allUsersData[uid]; if (!userData.history) return;
-                const p = userData.project || "阿妹"; if (p !== currentProjectKey) return; 
+                // 全地圖共用，不因 project 過濾
                 
                 let historyPts = userData.history;
                 if (isMyRouteMode) historyPts = historyPts.slice(0, Math.max(1, snakeIndex));
@@ -1202,7 +1261,6 @@
                 if (isMyRouteMode && uid !== targetRouteUid) return; 
                 
                 const userData = allUsersData[uid]; if (!userData.history) return;
-                const p = userData.project || "阿妹"; if (p !== currentProjectKey) return; 
                 
                 let historyPts = userData.history;
                 if (isMyRouteMode) historyPts = historyPts.slice(0, Math.max(1, snakeIndex));
@@ -1227,7 +1285,6 @@
                 if (isMyRouteMode && uid !== targetRouteUid) return; 
                 
                 const userData = allUsersData[uid]; if (!userData.history || userData.history.length === 0) return;
-                const p = userData.project || "阿妹"; if (p !== currentProjectKey) return; 
                 const isSelf = (uid === myUid); const renderColor = isSelf ? '#ef4444' : (userData.color || '#3b82f6');
                 
                 if (isMyRouteMode && uid === targetRouteUid) return; 
@@ -1289,7 +1346,7 @@
                     let maxLen = 0;
                     for (const uid in allUsersData) {
                         const u = allUsersData[uid];
-                        if (u.project === currentProjectKey && u.history && u.history.length > maxLen) {
+                        if (u.history && u.history.length > maxLen) {
                             maxLen = u.history.length;
                             targetRouteUid = uid;
                         }
@@ -1363,11 +1420,11 @@
         }
 
         function drawEvaGrid() {
+            // 【修復】 溫和地清除圖層內容，避免引發 _removePath 的 bug
             if (!evaGridLayer) {
                 evaGridLayer = L.layerGroup().addTo(map);
             } else {
-                map.removeLayer(evaGridLayer);
-                evaGridLayer = L.layerGroup().addTo(map);
+                evaGridLayer.clearLayers();
             }
             
             if (evaAnimationTimeout) clearTimeout(evaAnimationTimeout);
@@ -1383,6 +1440,7 @@
             let allValidPts = [];
             for (const uid in allUsersData) {
                 const u = allUsersData[uid];
+                // 完成度計算只針對目前目標的軌跡，因為其他專案可能走在完全不同的地方
                 if (u.project === currentProjectKey && u.history) {
                     allValidPts.push(...u.history);
                 }
@@ -1521,6 +1579,7 @@
                 evaGridBtn.style.color = "#1a202c";
                 if (evaAnimationTimeout) clearTimeout(evaAnimationTimeout);
                 if (evaGridLayer) {
+                    evaGridLayer.clearLayers();
                     map.removeLayer(evaGridLayer);
                     evaGridLayer = null;
                 }
