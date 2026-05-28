@@ -191,6 +191,8 @@
                 <button id="toggle-announce-panel-btn" class="px-1 py-0.5 border-2 border-black bg-yellow-400 text-black font-extrabold cursor-pointer text-[10px] shadow-[2px_2px_0px_#1a202c]">➖</button>
             </div>
             <div id="announcement-text" class="leading-relaxed mt-2 whitespace-pre-wrap transition-all duration-300 text-[11px] max-h-32 overflow-y-auto">載入中...</div>
+            <!-- 動態新增的動作按鈕區 -->
+            <div id="announcement-action-container" class="mt-2 hidden"></div>
         </div>
     </div>
 
@@ -329,11 +331,14 @@
         function setPersistentData(key, value) { try { localStorage.setItem(key, value); } catch(e) {} }
         function getPersistentData(key) { try { return localStorage.getItem(key); } catch(e) {} return null; }
 
+        let taiwanPolygons = []; // 用於儲存台灣陸地邊界
+
         // ================= 全新多目標資料結構 =================
         const PROJECTS = {
             "阿妹": { 
                 name: "找阿妹", 
                 animalName: "阿妹",
+                type: "dog",
                 lostDate: "2023-10-01",
                 bounds: [ [23.009222, 120.255556], [23.007889, 120.259528] ],
                 mainPhoto: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80",
@@ -342,13 +347,18 @@
                     { url: "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e", title: "" }
                 ],
                 videos: [
-                    { url: "https://www.w3schools.com/html/mov_bbb.mp4", title: "平常走路的樣子" }
+                    { url: "https://www.w3schools.com/html/mov_bbb.mp4", title: "會這樣叫" }
                 ],
-                announcement: "【阿妹協尋】\n請大家在台南地區多加留意，如果有看到疑似阿妹的身影，請不要驚擾，立即聯絡我們！\n重點熱區：台南公園周邊。"
+                announcement: "【阿妹協尋】\n請大家在台南地區多加留意，如果有看到疑似阿妹的身影，請不要驚擾，立即聯絡我們！\n重點熱區：台南公園周邊。",
+                actionLink: {
+                    url: "https://weibsite.github.io/findPet/",
+                    text: "聯絡主人"
+                }
             },
             "烏尼": { 
                 name: "找烏尼", 
                 animalName: "烏尼",
+                type: "cat",
                 lostDate: "2024-01-15",
                 bounds: [ [25.058413, 121.489253], [25.058575, 121.489066] ],
                 mainPhoto: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80",
@@ -499,6 +509,30 @@
                 console.warn("無法讀取 config.json，使用預設網址", e);
                 NGROK_WS_URL = "wss://mapping-made-anticipated-carries.trycloudflare.com/ws";
             }
+            
+            // 下載台灣縣市邊界 GeoJSON 來作為迷霧陸地遮罩
+            fetch('https://raw.githubusercontent.com/g0v/twgeojson/master/json/twCounty2010.geo.json')
+                .then(res => res.json())
+                .then(data => {
+                    data.features.forEach(feature => {
+                        let polys = feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates] : feature.geometry.coordinates;
+                        polys.forEach(poly => {
+                            let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+                            poly[0].forEach(coord => {
+                                if (coord[1] < minLat) minLat = coord[1];
+                                if (coord[1] > maxLat) maxLat = coord[1];
+                                if (coord[0] < minLng) minLng = coord[0];
+                                if (coord[0] > maxLng) maxLng = coord[0];
+                            });
+                            taiwanPolygons.push({
+                                coordinates: poly,
+                                bounds: L.latLngBounds([minLat, minLng], [maxLat, maxLng])
+                            });
+                        });
+                    });
+                    requestFogRender();
+                })
+                .catch(err => console.warn('無法載入台灣地形檔，將使用全螢幕迷霧:', err));
 
             // 【修復】強制給予地圖一個預設中心點，防止 Leaflet 出現 Set map center 錯誤
             map = L.map('map', { zoomControl: false }).setView([23.5, 121], 8);
@@ -561,6 +595,23 @@
             
             const ann = allAnnouncements[currentProjectKey] || proj.announcement || "目前無最新公告。";
             document.getElementById('announcement-text').innerHTML = escapeHTML(ann).replace(/\n/g, '<br>');
+
+            // 動態處理最新公告的網頁連結 (actionLink)
+            const actionContainer = document.getElementById('announcement-action-container');
+            actionContainer.innerHTML = '';
+            if (proj.actionLink && proj.actionLink.url) {
+                const btnText = proj.actionLink.text || "前往連結";
+                const btn = document.createElement('a');
+                btn.href = proj.actionLink.url;
+                btn.target = "_blank";
+                btn.className = "pixel-btn block text-center py-2 mt-2 text-xs bg-blue-600 text-white shadow-[2px_2px_0px_#1a202c] no-underline";
+                btn.innerText = `🔗 ${btnText}`;
+                actionContainer.appendChild(btn);
+                actionContainer.classList.remove('hidden');
+            } else {
+                actionContainer.classList.add('hidden');
+            }
+
             applyAnnouncePanelCollapseState();
         }
 
@@ -750,7 +801,6 @@
             if (isSystemReady) {
                 ws.send(JSON.stringify({ type: "init", uid: myUid, project: currentProjectKey }));
             }
-            showModal(`✅ 已切換至「${PROJECTS[currentProjectKey].name}」！\n由於共用地圖，您仍可看見周圍其他動物的探索狀況。`);
         });
 
         // 渲染所有專案的中心點 (點擊可切換)
@@ -768,18 +818,19 @@
                 const center = [(proj.bounds[0][0] + proj.bounds[1][0]) / 2, (proj.bounds[0][1] + proj.bounds[1][1]) / 2];
                 const isCurrent = (key === currentProjectKey);
                 
-                const iconSymbol = key === '烏尼' ? '🐈' : '🐕'; 
+                const typeMap = { 'dog': '🐕', 'cat': '🐈', 'bird': '🦜', 'rabbit': '🐇', 'turtle': '🐢' };
+                const iconSymbol = typeMap[proj.type] || '🐾';
                 
                 let markerHtml = '';
                 if (isCurrent) {
                     markerHtml = `<div style="position: absolute;"><div class="center-pulse-square" style="border-color: #ef4444;"></div></div>
                                   <div class="user-label-container" style="bottom: 12px; cursor: pointer; pointer-events: auto;">
-                                      <div class="user-name-tag pixel-panel" style="color: white; background-color: #ef4444; border-color: #1a202c; z-index: 10;">📍 ${key}</div>
+                                      <div class="user-name-tag pixel-panel" style="color: white; background-color: #ef4444; border-color: #1a202c; z-index: 10;">📍 ${escapeHTML(proj.animalName)}遺失中心</div>
                                       <div style="font-size: 32px; filter: drop-shadow(2px 2px 0px #1a202c); position: relative; z-index: 10; animation: bounce 2s infinite;">${iconSymbol}</div>
                                   </div>`;
                 } else {
                     markerHtml = `<div class="user-label-container" style="bottom: 12px; cursor: pointer; pointer-events: auto; opacity: 0.8;">
-                                      <div class="user-name-tag pixel-panel" style="color: #1a202c; background-color: #e5e7eb; border-color: #1a202c; z-index: 10;">點擊找 ${key}</div>
+                                      <div class="user-name-tag pixel-panel" style="color: #1a202c; background-color: #e5e7eb; border-color: #1a202c; z-index: 10;">找 ${escapeHTML(proj.animalName)}</div>
                                       <div style="font-size: 24px; filter: drop-shadow(2px 2px 0px #1a202c); position: relative; z-index: 10;">${iconSymbol}</div>
                                   </div>`;
                 }
@@ -1370,9 +1421,43 @@
             if (!map || !fogCtx || !isFogVisible) return;
             const w = Math.ceil(fogCanvas.width * FOG_SCALE), h = Math.ceil(fogCanvas.height * FOG_SCALE);
             
-            lowResCtx.fillStyle = 'rgba(15, 20, 25, 0.9)'; lowResCtx.fillRect(0, 0, w, h);
+            lowResCanvas.width = w; lowResCanvas.height = h; tempCanvas.width = w; tempCanvas.height = h;
             
-            const now = Date.now(), center = map.getCenter();
+            // --- 【陸地迷霧遮罩】 ---
+            const mapBounds = map.getBounds().pad(0.1);
+            const center = map.getCenter();
+            const distToTw = getDistance(center.lat, center.lng, 23.5, 121.0);
+            
+            if (taiwanPolygons.length > 0) {
+                // 利用 bounding box 過濾螢幕畫面外的縣市板塊 (極大提高效能)
+                let visiblePolygons = taiwanPolygons.filter(p => mapBounds.intersects(p.bounds));
+                
+                if (visiblePolygons.length > 0) {
+                    lowResCtx.fillStyle = 'rgba(15, 20, 25, 0.9)';
+                    lowResCtx.beginPath();
+                    visiblePolygons.forEach(p => {
+                        p.coordinates.forEach(ring => {
+                            ring.forEach((coord, idx) => {
+                                const pt = map.latLngToContainerPoint([coord[1], coord[0]]);
+                                if (idx === 0) lowResCtx.moveTo(pt.x * FOG_SCALE, pt.y * FOG_SCALE);
+                                else lowResCtx.lineTo(pt.x * FOG_SCALE, pt.y * FOG_SCALE);
+                            });
+                        });
+                    });
+                    // 使用 evenodd 填充規則來正確處理挖空的地形 (如湖泊)
+                    lowResCtx.fill('evenodd');
+                } else if (distToTw > 500000) {
+                    // 距離台灣太遠時 (超過 500 公里)，退回舊版的全螢幕迷霧
+                    lowResCtx.fillStyle = 'rgba(15, 20, 25, 0.9)';
+                    lowResCtx.fillRect(0, 0, w, h);
+                }
+            } else {
+                // 如果 GeoJSON 還沒載入完成，預設也是全螢幕迷霧
+                lowResCtx.fillStyle = 'rgba(15, 20, 25, 0.9)';
+                lowResCtx.fillRect(0, 0, w, h);
+            }
+            
+            const now = Date.now();
             const metersPerPixel = (40075016.686 * Math.abs(Math.cos(center.lat * Math.PI/180))) / Math.pow(2, map.getZoom() + 8);
             const ONE_HOUR = 60 * 60 * 1000;
 
