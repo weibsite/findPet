@@ -509,14 +509,19 @@
 
         async function initSystem() {
             try {
+                // 優先嘗試讀取 config.json
                 const configRes = await fetch('config.json?t=' + Date.now());
                 const configData = await configRes.json();
                 if (configData && configData.ws_url) {
                     NGROK_WS_URL = configData.ws_url;
                 }
             } catch (e) {
-                console.warn("無法讀取 config.json，使用預設網址", e);
-                NGROK_WS_URL = "wss://mapping-made-anticipated-carries.trycloudflare.com/ws";
+                console.warn("無法讀取 config.json，嘗試使用當前網域作為預設網址", e);
+            }
+
+            // 若未讀取到，或者讀取失敗，使用目前的網址反推作為備案 (完美解決硬編碼問題)
+            if (!NGROK_WS_URL) {
+                NGROK_WS_URL = window.location.origin.replace('http', 'ws') + '/ws';
             }
             
             fetch('https://raw.githubusercontent.com/g0v/twgeojson/master/json/twCounty2010.geo.json')
