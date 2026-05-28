@@ -474,7 +474,17 @@
         }
 
         async function initSystem() {
-            NGROK_WS_URL = "wss://mapping-made-anticipated-carries.trycloudflare.com/ws";
+            try {
+                const configRes = await fetch('config.json?t=' + Date.now());
+                const configData = await configRes.json();
+                if (configData && configData.ws_url) {
+                    NGROK_WS_URL = configData.ws_url;
+                }
+            } catch (e) {
+                console.warn("無法讀取 config.json，使用預設網址", e);
+                NGROK_WS_URL = "wss://mapping-made-anticipated-carries.trycloudflare.com/ws";
+            }
+
             map = L.map('map', { zoomControl: false });
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
