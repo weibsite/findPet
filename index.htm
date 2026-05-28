@@ -135,7 +135,7 @@
         </div>
     </div>
 
-    <!-- UI 上方置中排版：下拉式選單 (切換目標) 避免文字遮擋與自適應寬度 -->
+    <!-- UI 上方置中排版：下拉式選單 (切換目標) -->
     <div id="project-select-wrapper" class="absolute top-4 left-1/2 transform -translate-x-1/2 z-[2000] hidden w-auto min-w-[200px] max-w-[90vw]">
         <div class="relative w-full">
             <select id="switch-project-select" class="pixel-btn p-3 pr-10 text-sm sm:text-base font-black text-black border-4 border-black bg-yellow-400 shadow-[4px_4px_0px_#1a202c] cursor-pointer outline-none appearance-none w-full text-center">
@@ -211,15 +211,12 @@
        </div>
     </div>
 
-    <!-- 圖片放大檢視 Modal (支援左右滑動) -->
+    <!-- 圖片放大檢視 Modal -->
     <div id="photo-viewer-modal" class="hidden fixed inset-0 z-[12000] bg-black/95 flex flex-col items-center justify-center p-0 touch-none">
         <div class="relative w-full h-full flex items-center justify-center overflow-hidden" id="photo-viewer-container">
             <img id="viewer-img" src="" class="max-w-full max-h-[85vh] object-contain transition-transform duration-300 pointer-events-none">
-            <!-- 標題 -->
             <div id="viewer-title" class="absolute top-4 left-0 w-full text-center text-white text-lg font-bold drop-shadow-[2px_2px_0px_#000] z-10 px-4 pointer-events-none"></div>
-            <!-- 關閉按鈕 -->
             <button id="viewer-close-btn" class="absolute top-4 right-4 z-20 text-white bg-red-600/80 rounded border-2 border-white px-3 py-1 text-sm font-bold cursor-pointer active:scale-95 shadow-[2px_2px_0px_#000]">關閉 ✕</button>
-            <!-- 左右切換按鈕 (置於下方) -->
             <div class="absolute bottom-6 left-0 w-full flex justify-center gap-6 z-20 px-4">
                 <button id="viewer-prev-btn" class="pixel-btn px-6 py-3 bg-gray-200 text-black border-2 border-black shadow-[4px_4px_0px_#1a202c] active:shadow-[0px_0px_0px_#1a202c] active:translate-y-1 text-sm sm:text-base whitespace-nowrap">&lt; 上一張</button>
                 <button id="viewer-next-btn" class="pixel-btn px-6 py-3 bg-gray-200 text-black border-2 border-black shadow-[4px_4px_0px_#1a202c] active:shadow-[0px_0px_0px_#1a202c] active:translate-y-1 text-sm sm:text-base whitespace-nowrap">下一張 &gt;</button>
@@ -331,10 +328,12 @@
         function setPersistentData(key, value) { try { localStorage.setItem(key, value); } catch(e) {} }
         function getPersistentData(key) { try { return localStorage.getItem(key); } catch(e) {} return null; }
 
-        let taiwanPolygons = []; // 用於儲存台灣陸地邊界
+        let taiwanPolygons = []; 
 
-        // ================= 全新多目標資料結構 =================
-        const PROJECTS = {
+        // ================= 【核心修正】動態多目標資料結構與重置邏輯 =================
+        // 將系統預設的專案獨立保存，每次收到更新時，一律從這裡「歸零」再合入新資料，
+        // 這樣被下架刪除的專案才會真正消失。
+        const DEFAULT_PROJECTS = {
             "阿妹": { 
                 name: "找阿妹", 
                 animalName: "阿妹",
@@ -343,17 +342,10 @@
                 bounds: [ [23.009222, 120.255556], [23.007889, 120.259528] ],
                 mainPhoto: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80",
                 photos: [
-                    { url: "https://images.unsplash.com/photo-1543466835-00a7907e9de1", title: "剛洗完澡的樣子" },
-                    { url: "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e", title: "" }
+                    { url: "https://images.unsplash.com/photo-1543466835-00a7907e9de1", title: "剛洗完澡的樣子" }
                 ],
-                videos: [
-                    { url: "https://www.w3schools.com/html/mov_bbb.mp4", title: "會這樣叫" }
-                ],
-                announcement: "【阿妹協尋】\n請大家在台南地區多加留意，如果有看到疑似阿妹的身影，請不要驚擾，立即聯絡我們！\n重點熱區：台南公園周邊。",
-                actionLink: {
-                    url: "https://weibsite.github.io/findPet/",
-                    text: "聯絡主人"
-                }
+                videos: [],
+                announcement: "【阿妹協尋】\n請大家在台南地區多加留意，如果有看到疑似阿妹的身影，請不要驚擾，立即聯絡我們！\n重點熱區：台南公園周邊。"
             },
             "烏尼": { 
                 name: "找烏尼", 
@@ -362,26 +354,36 @@
                 lostDate: "2024-01-15",
                 bounds: [ [25.058413, 121.489253], [25.058575, 121.489066] ],
                 mainPhoto: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80",
-                photos: [
-                    { url: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba" }
-                ],
+                photos: [ { url: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba" } ],
                 videos: [],
                 announcement: "【烏尼協尋】\n烏尼生性膽小，請各位志工在三重地區周圍小巷多多留意，如有發現請保持距離並回報，感謝大家的幫忙！"
             }
         };
 
-        // 初始化下拉選單
-        const projectSelect = document.getElementById('switch-project-select');
-        Object.keys(PROJECTS).forEach(key => {
-            const opt = document.createElement('option');
-            opt.value = key;
-            opt.innerText = `🎯 目標: ${PROJECTS[key].name}`;
-            projectSelect.appendChild(opt);
-        });
+        // 深拷貝預設專案給目前全域變數
+        let PROJECTS = JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
 
+        const projectSelect = document.getElementById('switch-project-select');
         let currentProjectKey = getPersistentData('dogMap_currentProject') || "阿妹";
-        if (!PROJECTS[currentProjectKey]) currentProjectKey = "阿妹";
-        projectSelect.value = currentProjectKey;
+        
+        function updateProjectDropdown() {
+            projectSelect.innerHTML = '';
+            Object.keys(PROJECTS).forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.innerText = `🎯 目標: ${PROJECTS[key].name}`;
+                projectSelect.appendChild(opt);
+            });
+
+            if (PROJECTS[currentProjectKey]) {
+                projectSelect.value = currentProjectKey;
+            } else {
+                currentProjectKey = Object.keys(PROJECTS)[0] || "阿妹";
+                projectSelect.value = currentProjectKey;
+            }
+        }
+        
+        updateProjectDropdown();
 
         let allAnnouncements = {};
         Object.keys(PROJECTS).forEach(key => {
@@ -439,13 +441,11 @@
 
         let isAnnounceCollapsed = localStorage.getItem('dogMap_announceCollapsed') === 'true';
 
-        // --- 照片全螢幕檢視器狀態 ---
         let viewerPhotos = [];
         let currentViewerIndex = 0;
         let touchStartX = 0;
         let touchEndX = 0;
 
-        // --- 基礎函數與 Modals ---
         const customModal = document.getElementById('custom-modal'), customModalText = document.getElementById('custom-modal-text');
         function showModal(msg) { customModalText.innerText = msg; customModal.classList.remove('hidden'); }
         function showHTMLModal(htmlContent) { customModalText.innerHTML = htmlContent; customModal.classList.remove('hidden'); }
@@ -473,7 +473,6 @@
         function escapeHTML(str) { return String(str).replace(/[&<>"']/g, m => ({'&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#39;'}[m])); }
         function generateRandomColor() { const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f97316', '#ec4899', '#06b6d4']; return colors[Math.floor(Math.random() * colors.length)]; }
 
-        // ================= 空間降採樣 (路徑永遠保存但優化精度) =================
         function optimizeHistory(history) {
             if (history.length <= 10) return history;
             let compressed = [history[0]];
@@ -510,7 +509,6 @@
                 NGROK_WS_URL = "wss://mapping-made-anticipated-carries.trycloudflare.com/ws";
             }
             
-            // 下載台灣縣市邊界 GeoJSON 來作為迷霧陸地遮罩
             fetch('https://raw.githubusercontent.com/g0v/twgeojson/master/json/twCounty2010.geo.json')
                 .then(res => res.json())
                 .then(data => {
@@ -534,7 +532,6 @@
                 })
                 .catch(err => console.warn('無法載入台灣地形檔，將使用全螢幕迷霧:', err));
 
-            // 【修復】強制給予地圖一個預設中心點，防止 Leaflet 出現 Set map center 錯誤
             map = L.map('map', { zoomControl: false }).setView([23.5, 121], 8);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -552,22 +549,19 @@
                 if (mapInteractionTimer) clearTimeout(mapInteractionTimer);
             });
             
-            // 監聽拖曳結束與縮放結束，分段讀取範圍資料
             map.on('moveend zoomend mouseup touchend', () => {
                 mapInteractionTimer = setTimeout(() => { isMapInteracting = false; }, 15000); 
                 
-                // 【空間加載 / Viewport Fetch】
                 if (viewportFetchTimer) clearTimeout(viewportFetchTimer);
                 viewportFetchTimer = setTimeout(() => {
                     if (isSystemReady) {
                         const b = map.getBounds();
-                        // 送出畫面四角座標給伺服器，要求傳回範圍內的資料 (需後端 API 配合)
                         ws.send(JSON.stringify({ 
                             type: "get_viewport_data", 
                             bounds: { n: b.getNorth(), s: b.getSouth(), e: b.getEast(), w: b.getWest() } 
                         }));
                     }
-                    renderMap(); // 重新渲染當前畫面內的使用者
+                    renderMap(); 
                 }, 500);
             });
 
@@ -585,10 +579,15 @@
             connectWebSocket(); checkLocalSetupAndStart();
         }
 
-        // ================= 動物資訊卡與相簿邏輯 =================
         function updateAnimalInfoCard() {
             const proj = PROJECTS[currentProjectKey];
-            document.getElementById('animal-main-photo').src = proj.mainPhoto;
+            if (!proj) return; 
+
+            let mainUrl = proj.mainPhoto;
+            if (mainUrl && mainUrl.startsWith('/images/')) {
+                mainUrl = getBaseHttpUrl() + mainUrl;
+            }
+            document.getElementById('animal-main-photo').src = mainUrl || "";
             document.getElementById('animal-name-date').innerText = `${proj.animalName} (遺失: ${proj.lostDate})`;
             document.getElementById('announcement-panel').classList.remove('hidden');
             document.getElementById('admin-current-proj').innerText = `針對: ${currentProjectKey}`;
@@ -596,7 +595,6 @@
             const ann = allAnnouncements[currentProjectKey] || proj.announcement || "目前無最新公告。";
             document.getElementById('announcement-text').innerHTML = escapeHTML(ann).replace(/\n/g, '<br>');
 
-            // 動態處理最新公告的網頁連結 (actionLink)
             const actionContainer = document.getElementById('announcement-action-container');
             actionContainer.innerHTML = '';
             if (proj.actionLink && proj.actionLink.url) {
@@ -617,13 +615,13 @@
 
         document.getElementById('animal-info-section').addEventListener('click', () => {
             const proj = PROJECTS[currentProjectKey];
+            if(!proj) return;
             document.getElementById('gallery-title').innerText = `${proj.animalName} 的相簿`;
             renderGallery('photos');
             document.getElementById('gallery-modal').classList.remove('hidden');
         });
 
         document.getElementById('close-gallery-btn').addEventListener('click', () => {
-            // 清空內容以停止影片背景播放
             document.getElementById('gallery-content').innerHTML = '';
             document.getElementById('gallery-modal').classList.add('hidden');
         });
@@ -644,16 +642,16 @@
                 } else {
                     proj.photos.forEach((item, index) => {
                         const imgObj = typeof item === 'string' ? { url: item } : item;
+                        let pUrl = imgObj.url;
+                        if(pUrl && pUrl.startsWith('/images/')) pUrl = getBaseHttpUrl() + pUrl;
+
                         const container = document.createElement('div');
                         container.className = "mb-4 border-2 border-black shadow-[4px_4px_0px_#1a202c] bg-white cursor-pointer active:translate-y-1 transition-transform";
                         
-                        // 點擊打開放大檢視器
-                        container.addEventListener('click', () => {
-                            openPhotoViewer(index, proj.photos);
-                        });
+                        container.addEventListener('click', () => { openPhotoViewer(index, proj.photos); });
 
                         const img = document.createElement('img');
-                        img.src = imgObj.url;
+                        img.src = pUrl;
                         img.className = "w-full object-cover border-b-2 border-black block";
                         container.appendChild(img);
 
@@ -677,6 +675,9 @@
                 } else {
                     proj.videos.forEach(item => {
                         const vidObj = typeof item === 'string' ? { url: item } : item;
+                        let vUrl = vidObj.url;
+                        if(vUrl && vUrl.startsWith('/images/')) vUrl = getBaseHttpUrl() + vUrl;
+
                         const container = document.createElement('div');
                         container.className = "mb-4 border-2 border-black shadow-[4px_4px_0px_#1a202c] bg-white p-3";
                         
@@ -687,9 +688,8 @@
                             container.appendChild(titleDiv);
                         }
 
-                        // 原生 HTML5 影片播放器 (內建右下角全螢幕按鈕)
                         const videoEl = document.createElement('video');
-                        videoEl.src = vidObj.url;
+                        videoEl.src = vUrl;
                         videoEl.controls = true;
                         videoEl.className = "w-full border-2 border-black bg-black";
                         container.appendChild(videoEl);
@@ -700,73 +700,42 @@
             }
         }
 
-        // ================= 全螢幕照片檢視器邏輯 =================
         function openPhotoViewer(index, photos) {
-            viewerPhotos = photos;
-            currentViewerIndex = index;
-            updatePhotoViewer();
+            viewerPhotos = photos; currentViewerIndex = index; updatePhotoViewer();
             document.getElementById('photo-viewer-modal').classList.remove('hidden');
         }
 
         function updatePhotoViewer() {
             if (viewerPhotos.length === 0) return;
-            const imgObj = typeof viewerPhotos[currentViewerIndex] === 'string' 
-                ? { url: viewerPhotos[currentViewerIndex], title: "" } 
-                : viewerPhotos[currentViewerIndex];
+            const imgObj = typeof viewerPhotos[currentViewerIndex] === 'string' ? { url: viewerPhotos[currentViewerIndex], title: "" } : viewerPhotos[currentViewerIndex];
             
-            document.getElementById('viewer-img').src = imgObj.url;
+            let pUrl = imgObj.url;
+            if(pUrl && pUrl.startsWith('/images/')) pUrl = getBaseHttpUrl() + pUrl;
+            
+            document.getElementById('viewer-img').src = pUrl;
             document.getElementById('viewer-title').innerText = imgObj.title || "";
             
             document.getElementById('viewer-prev-btn').style.opacity = currentViewerIndex > 0 ? "1" : "0.5";
             document.getElementById('viewer-next-btn').style.opacity = currentViewerIndex < viewerPhotos.length - 1 ? "1" : "0.5";
         }
 
-        document.getElementById('viewer-close-btn').addEventListener('click', () => {
-            document.getElementById('photo-viewer-modal').classList.add('hidden');
-        });
+        document.getElementById('viewer-close-btn').addEventListener('click', () => { document.getElementById('photo-viewer-modal').classList.add('hidden'); });
+        document.getElementById('viewer-prev-btn').addEventListener('click', () => { if (currentViewerIndex > 0) { currentViewerIndex--; updatePhotoViewer(); } });
+        document.getElementById('viewer-next-btn').addEventListener('click', () => { if (currentViewerIndex < viewerPhotos.length - 1) { currentViewerIndex++; updatePhotoViewer(); } });
 
-        document.getElementById('viewer-prev-btn').addEventListener('click', () => {
-            if (currentViewerIndex > 0) {
-                currentViewerIndex--;
-                updatePhotoViewer();
-            }
-        });
-
-        document.getElementById('viewer-next-btn').addEventListener('click', () => {
-            if (currentViewerIndex < viewerPhotos.length - 1) {
-                currentViewerIndex++;
-                updatePhotoViewer();
-            }
-        });
-
-        // 觸控滑動事件 (左右滑動切換相片)
         const viewerContainer = document.getElementById('photo-viewer-container');
-        viewerContainer.addEventListener('touchstart', e => {
-            touchStartX = e.changedTouches[0].screenX;
-        });
-        viewerContainer.addEventListener('touchend', e => {
-            touchEndX = e.changedTouches[0].screenX;
-            handleViewerSwipe();
-        });
+        viewerContainer.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; });
+        viewerContainer.addEventListener('touchend', e => { touchEndX = e.changedTouches[0].screenX; handleViewerSwipe(); });
 
         function handleViewerSwipe() {
             const SWIPE_THRESHOLD = 50;
             if (touchEndX < touchStartX - SWIPE_THRESHOLD) {
-                // 向左滑 -> 下一張
-                if (currentViewerIndex < viewerPhotos.length - 1) {
-                    currentViewerIndex++;
-                    updatePhotoViewer();
-                }
+                if (currentViewerIndex < viewerPhotos.length - 1) { currentViewerIndex++; updatePhotoViewer(); }
             } else if (touchEndX > touchStartX + SWIPE_THRESHOLD) {
-                // 向右滑 -> 上一張
-                if (currentViewerIndex > 0) {
-                    currentViewerIndex--;
-                    updatePhotoViewer();
-                }
+                if (currentViewerIndex > 0) { currentViewerIndex--; updatePhotoViewer(); }
             }
         }
 
-        // ================= 切換目標邏輯 (共用地圖) =================
         projectSelect.addEventListener('change', (e) => {
             localHistories[currentProjectKey] = localHistory;
             currentProjectKey = e.target.value;
@@ -778,9 +747,8 @@
             updateAnimalInfoCard();
             drawAllProjects();
             
-            // 自動飛往新目標
             const proj = PROJECTS[currentProjectKey];
-            map.flyToBounds(proj.bounds, {padding: [50, 50], animate: true});
+            if(proj) map.flyToBounds(proj.bounds, {padding: [50, 50], animate: true});
             
             if (isMyRouteMode) {
                 isMyRouteMode = false;
@@ -803,7 +771,6 @@
             }
         });
 
-        // 渲染所有專案的中心點 (點擊可切換)
         function drawAllProjects() {
             allCenterMarkers.forEach(m => map.removeLayer(m));
             allCenterMarkers = [];
@@ -880,11 +847,36 @@
             ws.onmessage = (event) => {
                 const response = JSON.parse(event.data);
                 
+                // 【核心修正】每次收到專案更新時，強制清除舊資料並載入新資料
+                if (response.type === 'sync' || response.type === 'projects_updated') {
+                    if (response.dynamicProjects || (response.data && response.data.dynamicProjects)) {
+                        const newProjects = response.dynamicProjects || response.data.dynamicProjects;
+                        
+                        // 強制歸零！避免被下架或刪除的專案還卡在選單裡
+                        PROJECTS = JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
+                        
+                        Object.keys(newProjects).forEach(k => {
+                            PROJECTS[k] = newProjects[k];
+                            if (!allAnnouncements[k]) allAnnouncements[k] = PROJECTS[k].announcement || "目前無最新公告。";
+                        });
+
+                        updateProjectDropdown();
+                        drawAllProjects();
+                        updateAnimalInfoCard();
+
+                        if (response.type === 'projects_updated') {
+                            showModal("✨ 系統地圖專案已更新！下拉選單已重整。");
+                        }
+                    }
+                }
+
                 if (response.type === 'sync') {
                     allUsersData = response.data.locations || {};
                     allSightings = response.data.sightings || {};
                     allRoutes = response.data.routes || {}; 
-                    allAnnouncements = response.data.announcements || {};
+                    if(response.data.announcements) {
+                        Object.assign(allAnnouncements, response.data.announcements);
+                    }
                     updateAnimalInfoCard();
                     renderMap(); renderSightings(); renderRoutes();
                     if(!document.getElementById('manage-sightings-modal').classList.contains('hidden')) renderManageSightingsList();
@@ -905,7 +897,6 @@
                     return;
                 }
 
-                // 處理增量更新
                 if (response.type === 'user_appended') {
                     const uid = response.uid;
                     const inData = response.data;
@@ -1112,7 +1103,6 @@
                     return;
                 }
 
-                // --- 抽獎與獎池回應 ---
                 if (response.type === 'my_prizes_data') {
                     const listContainer = document.getElementById('prize-pool-list');
                     listContainer.innerHTML = '';
@@ -1187,7 +1177,7 @@
             };
         }
 
-        // ================= 定位與同步發送 (Incremental) =================
+        // ================= 定位與同步發送 =================
         function startLocationServices(isAutoStart) {
             if (!navigator.geolocation) { handleGeoError({code: 0, message: "瀏覽器不支援"}, isAutoStart); return; }
             navigator.geolocation.getCurrentPosition((pos) => { handleValidPosition(pos.coords.latitude, pos.coords.longitude, Date.now()); finishUIReveal(); }, (err) => { handleGeoError(err, isAutoStart); }, { enableHighAccuracy: true, timeout: 15000 });
@@ -1247,17 +1237,12 @@
             }
         }
 
-        function getDistance(lat1, lon1, lat2, lon2) {
-            const p1 = lat1 * Math.PI/180, p2 = lat2 * Math.PI/180, dp = (lat2-lat1) * Math.PI/180, dl = (lon2-lon1) * Math.PI/180;
-            const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2); return 6371e3 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        }
-
-        // ================= 渲染地圖與迷霧 (共用地圖) =================
+        // ================= 渲染地圖與迷霧 =================
         function renderMap() {
             if (!markersLayer || !map) return;
             markersLayer.clearLayers(); 
             const now = Date.now();
-            const currentBounds = map.getBounds().pad(0.5); // 擴大渲染範圍，避免邊邊突然消失
+            const currentBounds = map.getBounds().pad(0.5); 
             
             if (isMyRouteMode) {
                 const targetData = allUsersData[targetRouteUid];
@@ -1321,7 +1306,6 @@
 
                 const lastPoint = userData.history[userData.history.length - 1];
                 
-                // 【空間過濾器】: 只渲染在畫面範圍內的使用者標記
                 if (!currentBounds.contains([lastPoint.lat, lastPoint.lng])) return;
 
                 if (now - lastPoint.timestamp < 60 * 60 * 1000) { 
@@ -1367,7 +1351,6 @@
                 const shortTitle = rawDesc.length > 6 ? rawDesc.substring(0, 6) + "..." : rawDesc;
                 const safeShortTitle = escapeHTML(shortTitle);
                 
-                // 若不是目前的專案，打上標籤
                 const projectTag = data.project && data.project !== currentProjectKey ? ` <span class="text-[10px] bg-gray-200 px-1">(${escapeHTML(data.project)})</span>` : '';
 
                 const icon = L.divIcon({ className: 'custom-div-icon', html: `<div class="user-label-container" style="bottom: 12px;"><div class="user-name-tag pixel-panel" style="color: #1a202c; background-color: #fef08a; border-color: #1a202c; animation: blink-pixel 2s infinite alternate;">⚠️ ${safeShortTitle}${projectTag}</div><div style="font-size: 28px; filter: drop-shadow(2px 2px 0px #1a202c); position: relative; z-index: 10;">🐾</div></div>`, iconSize: [0, 0], iconAnchor: [0, 0] });
@@ -1403,7 +1386,6 @@
                 updateCanvasPosition(); 
             }
             
-            // 【無閃爍核心】：拖曳地圖時，只更新 Canvas 的相對位置與重繪，絕對不重設 Canvas.width (會導致自動清空)
             function updateCanvasPosition() {
                 const topLeft = map.containerPointToLayerPoint([0, 0]);
                 L.DomUtil.setPosition(fogCanvas, topLeft);
@@ -1423,13 +1405,11 @@
             
             lowResCanvas.width = w; lowResCanvas.height = h; tempCanvas.width = w; tempCanvas.height = h;
             
-            // --- 【陸地迷霧遮罩】 ---
             const mapBounds = map.getBounds().pad(0.1);
             const center = map.getCenter();
             const distToTw = getDistance(center.lat, center.lng, 23.5, 121.0);
             
             if (taiwanPolygons.length > 0) {
-                // 利用 bounding box 過濾螢幕畫面外的縣市板塊 (極大提高效能)
                 let visiblePolygons = taiwanPolygons.filter(p => mapBounds.intersects(p.bounds));
                 
                 if (visiblePolygons.length > 0) {
@@ -1444,15 +1424,12 @@
                             });
                         });
                     });
-                    // 使用 evenodd 填充規則來正確處理挖空的地形 (如湖泊)
                     lowResCtx.fill('evenodd');
                 } else if (distToTw > 500000) {
-                    // 距離台灣太遠時 (超過 500 公里)，退回舊版的全螢幕迷霧
                     lowResCtx.fillStyle = 'rgba(15, 20, 25, 0.9)';
                     lowResCtx.fillRect(0, 0, w, h);
                 }
             } else {
-                // 如果 GeoJSON 還沒載入完成，預設也是全螢幕迷霧
                 lowResCtx.fillStyle = 'rgba(15, 20, 25, 0.9)';
                 lowResCtx.fillRect(0, 0, w, h);
             }
@@ -1474,7 +1451,6 @@
                 if (isMyRouteMode && uid !== targetRouteUid) return; 
                 
                 const userData = allUsersData[uid]; if (!userData.history) return;
-                // 全地圖共用，不因 project 過濾
                 
                 let historyPts = userData.history;
                 if (isMyRouteMode) historyPts = historyPts.slice(0, Math.max(1, snakeIndex));
@@ -1654,7 +1630,6 @@
         }
 
         function drawEvaGrid() {
-            // 【修復】 溫和地清除圖層內容，避免引發 _removePath 的 bug
             if (!evaGridLayer) {
                 evaGridLayer = L.layerGroup().addTo(map);
             } else {
@@ -1667,6 +1642,8 @@
             const pi = Math.PI;
             const rEarth = 6378137;
             const proj = PROJECTS[currentProjectKey];
+            if(!proj) return;
+
             const centerLat = (proj.bounds[0][0] + proj.bounds[1][0]) / 2;
             const centerLng = (proj.bounds[0][1] + proj.bounds[1][1]) / 2;
             const cosLat = Math.cos(centerLat * pi / 180);
@@ -1674,7 +1651,6 @@
             let allValidPts = [];
             for (const uid in allUsersData) {
                 const u = allUsersData[uid];
-                // 完成度計算只針對目前目標的軌跡，因為其他專案可能走在完全不同的地方
                 if (u.project === currentProjectKey && u.history) {
                     allValidPts.push(...u.history);
                 }
@@ -2019,8 +1995,10 @@
                 }
                 
                 const proj = PROJECTS[currentProjectKey];
-                const center = [(proj.bounds[0][0] + proj.bounds[1][0]) / 2, (proj.bounds[0][1] + proj.bounds[1][1]) / 2];
-                map.setView(center, 13, { animate: true }); 
+                if(proj) {
+                    const center = [(proj.bounds[0][0] + proj.bounds[1][0]) / 2, (proj.bounds[0][1] + proj.bounds[1][1]) / 2];
+                    map.setView(center, 13, { animate: true }); 
+                }
                 
                 renderMap(); document.getElementById('toast-text').innerText = "觀看模式啟動";
             } else {
@@ -2081,12 +2059,14 @@
             if (localHistory && localHistory.length > 0) {
                 const currentLoc = localHistory[localHistory.length - 1];
                 const proj = PROJECTS[currentProjectKey];
-                const centerLat = (proj.bounds[0][0] + proj.bounds[1][0]) / 2;
-                const centerLng = (proj.bounds[0][1] + proj.bounds[1][1]) / 2;
-                const distToCenter = getDistance(currentLoc.lat, currentLoc.lng, centerLat, centerLng);
-                
-                if (distToCenter > 50000) {
-                    isOutOfRange = true;
+                if(proj) {
+                    const centerLat = (proj.bounds[0][0] + proj.bounds[1][0]) / 2;
+                    const centerLng = (proj.bounds[0][1] + proj.bounds[1][1]) / 2;
+                    const distToCenter = getDistance(currentLoc.lat, currentLoc.lng, centerLat, centerLng);
+                    
+                    if (distToCenter > 50000) {
+                        isOutOfRange = true;
+                    }
                 }
             }
 
@@ -2158,7 +2138,7 @@
             updateGiftUI();
         }, 1000);
 
-        // 管理員與抽獎按鈕邏輯 (追加 Project Key)
+        // 管理員與抽獎按鈕邏輯
         document.getElementById('slot-draw-btn').addEventListener('click', () => {
             if (!isAdmin && lotteryTickets <= 0) { 
                 showModal("抽獎次數不足！\n請繼續在戶外移動探索來累積次數！(移動累積60分鐘抽1次)"); 
@@ -2266,7 +2246,6 @@
             });
         });
         
-        // 雙擊狀態列可強制變更伺服器位址 (救援用)
         document.getElementById('status-toast').addEventListener('dblclick', () => {
             showInputModal("🔗 設定伺服器連線網址", "請輸入 wss:// 開頭的網址...", NGROK_WS_URL, (newUrl) => {
                 if(newUrl.startsWith("wss://") || newUrl.startsWith("ws://")) {
@@ -2505,7 +2484,6 @@
             });
         });
         
-        // ======== 手動新增與管理獎品 UI 邏輯 ========
         const addPrizeBtn = document.getElementById('add-prize-btn');
         const managePrizesBtn = document.getElementById('manage-prizes-btn');
         const addPrizeModal = document.getElementById('add-prize-modal');
@@ -2629,7 +2607,6 @@
             }
         });
 
-        // UI Modal 控制器綁定 
         document.getElementById('slot-close-btn').addEventListener('click', () => document.getElementById('slot-machine-modal').classList.add('hidden'));
         document.getElementById('floating-gift-container').addEventListener('click', () => {
             if (isSpectatorMode) { showModal("觀看模式無法參與抽獎喔！"); return; }
