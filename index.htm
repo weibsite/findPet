@@ -607,7 +607,13 @@
             document.getElementById('announcement-panel').classList.remove('hidden');
             document.getElementById('admin-current-proj').innerText = `針對: ${currentProjectKey}`;
             
-            const ann = allAnnouncements[currentProjectKey] || proj.announcement || "目前無最新公告。";
+            // 核心修正：優先使用飼主自訂的公告。除非有管理員特別指派的新公告。
+            let ann = proj.announcement || "目前無最新公告。";
+            let serverAnn = allAnnouncements[currentProjectKey];
+            if (serverAnn && serverAnn !== "目前無最新公告。") {
+                ann = serverAnn;
+            }
+            
             document.getElementById('announcement-text').innerHTML = escapeHTML(ann).replace(/\n/g, '<br>');
 
             const actionContainer = document.getElementById('announcement-action-container');
@@ -872,7 +878,10 @@
                         
                         Object.keys(newProjects).forEach(k => {
                             PROJECTS[k] = newProjects[k];
-                            if (!allAnnouncements[k]) allAnnouncements[k] = PROJECTS[k].announcement || "目前無最新公告。";
+                            // 更新時，若尚未有管理員公告，優先使用飼主公告
+                            if (!allAnnouncements[k] || allAnnouncements[k] === "目前無最新公告。") {
+                                allAnnouncements[k] = PROJECTS[k].announcement || "目前無最新公告。";
+                            }
                         });
 
                         updateProjectDropdown();
@@ -890,7 +899,12 @@
                     allSightings = response.data.sightings || {};
                     allRoutes = response.data.routes || {}; 
                     if(response.data.announcements) {
-                        Object.assign(allAnnouncements, response.data.announcements);
+                        Object.keys(response.data.announcements).forEach(k => {
+                            // 不要用預設的「目前無最新公告。」去覆蓋飼主辛苦填寫的公告
+                            if (response.data.announcements[k] && response.data.announcements[k] !== "目前無最新公告。") {
+                                allAnnouncements[k] = response.data.announcements[k];
+                            }
+                        });
                     }
                     updateAnimalInfoCard();
                     renderMap(); renderSightings(); renderRoutes();
@@ -903,7 +917,12 @@
                     if (response.data.sightings) allSightings = response.data.sightings;
                     if (response.data.routes) allRoutes = response.data.routes;
                     if (response.data.announcements) {
-                        Object.assign(allAnnouncements, response.data.announcements);
+                        Object.keys(response.data.announcements).forEach(k => {
+                            // 不要用預設的「目前無最新公告。」去覆蓋飼主辛苦填寫的公告
+                            if (response.data.announcements[k] && response.data.announcements[k] !== "目前無最新公告。") {
+                                allAnnouncements[k] = response.data.announcements[k];
+                            }
+                        });
                         updateAnimalInfoCard();
                     }
                     renderSightings(); renderRoutes();
