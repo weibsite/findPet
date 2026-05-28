@@ -321,7 +321,10 @@
                 lostDate: "2023-10-01",
                 bounds: [ [23.009222, 120.255556], [23.007889, 120.259528] ],
                 mainPhoto: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80",
-                photos: ["https://images.unsplash.com/photo-1543466835-00a7907e9de1", "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e"],
+                photos: [
+                    { url: "https://images.unsplash.com/photo-1543466835-00a7907e9de1", title: "剛洗完澡的樣子" },
+                    { url: "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e", title: "" }
+                ],
                 videos: [],
                 announcement: "【阿妹協尋】\n請大家在台南地區多加留意，如果有看到疑似阿妹的身影，請不要驚擾，立即聯絡我們！\n重點熱區：台南公園周邊。"
             },
@@ -331,7 +334,9 @@
                 lostDate: "2024-01-15",
                 bounds: [ [25.058413, 121.489253], [25.058575, 121.489066] ],
                 mainPhoto: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?ixlib=rb-4.0.3&auto=format&fit=crop&w=300&q=80",
-                photos: ["https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba"],
+                photos: [
+                    { url: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba" }
+                ],
                 videos: [],
                 announcement: "【烏尼協尋】\n烏尼生性膽小，請各位志工在三重地區周圍小巷多多留意，如有發現請保持距離並回報，感謝大家的幫忙！"
             }
@@ -355,7 +360,8 @@
             allAnnouncements[key] = PROJECTS[key].announcement || "目前無最新公告。";
         });
         
-        let boundsRectangle = null, centerMarker = null;
+        let allCenterMarkers = [];
+        let activeBoundsRectangle = null;
 
         // --- 狀態變數 ---
         let map, markersLayer, sightingsLayer, routesLayer;
@@ -554,19 +560,59 @@
             if (type === 'photos') {
                 btnP.className = "flex-1 pixel-btn py-2 bg-blue-500 text-white border-2 border-black";
                 btnV.className = "flex-1 pixel-btn py-2 bg-gray-400 text-white border-2 border-black";
-                if (proj.photos.length === 0) content.innerHTML = '<div class="text-center text-gray-500 font-bold mt-10">目前沒有相片</div>';
-                proj.photos.forEach(url => {
-                    const img = document.createElement('img'); img.src = url; img.className = "w-full border-2 border-black shadow-[2px_2px_0px_#1a202c]";
-                    content.appendChild(img);
-                });
+                if (!proj.photos || proj.photos.length === 0) {
+                    content.innerHTML = '<div class="text-center text-gray-500 font-bold mt-10">目前沒有相片</div>';
+                } else {
+                    proj.photos.forEach(item => {
+                        const imgObj = typeof item === 'string' ? { url: item } : item;
+                        const container = document.createElement('div');
+                        container.className = "mb-4 border-2 border-black shadow-[4px_4px_0px_#1a202c] bg-white";
+                        
+                        const img = document.createElement('img');
+                        img.src = imgObj.url;
+                        img.className = "w-full object-cover border-b-2 border-black block";
+                        container.appendChild(img);
+
+                        if (imgObj.title && imgObj.title.trim() !== "") {
+                            const titleDiv = document.createElement('div');
+                            titleDiv.className = "p-2 text-sm font-bold text-gray-900 text-center";
+                            titleDiv.innerText = imgObj.title;
+                            container.appendChild(titleDiv);
+                        } else {
+                            img.classList.remove('border-b-2', 'border-black');
+                        }
+
+                        content.appendChild(container);
+                    });
+                }
             } else {
                 btnV.className = "flex-1 pixel-btn py-2 bg-blue-500 text-white border-2 border-black";
                 btnP.className = "flex-1 pixel-btn py-2 bg-gray-400 text-white border-2 border-black";
-                if (proj.videos.length === 0) content.innerHTML = '<div class="text-center text-gray-500 font-bold mt-10">目前沒有影片</div>';
-                proj.videos.forEach(url => {
-                    const p = document.createElement('p'); p.className = "text-sm font-bold text-center"; p.innerText = "影片連結: " + url;
-                    content.appendChild(p);
-                });
+                if (!proj.videos || proj.videos.length === 0) {
+                    content.innerHTML = '<div class="text-center text-gray-500 font-bold mt-10">目前沒有影片</div>';
+                } else {
+                    proj.videos.forEach(item => {
+                        const vidObj = typeof item === 'string' ? { url: item } : item;
+                        const container = document.createElement('div');
+                        container.className = "mb-4 border-2 border-black shadow-[4px_4px_0px_#1a202c] bg-white p-3";
+                        
+                        if (vidObj.title && vidObj.title.trim() !== "") {
+                            const titleDiv = document.createElement('div');
+                            titleDiv.className = "text-sm font-black text-blue-700 mb-2 border-b-2 border-dashed border-gray-400 pb-1";
+                            titleDiv.innerText = vidObj.title;
+                            container.appendChild(titleDiv);
+                        }
+
+                        const a = document.createElement('a');
+                        a.href = vidObj.url;
+                        a.target = "_blank";
+                        a.className = "pixel-btn block text-center py-2 text-xs bg-gray-200 text-gray-800 no-underline";
+                        a.innerText = "▶ 點擊開啟影片連結";
+                        container.appendChild(a);
+
+                        content.appendChild(container);
+                    });
+                }
             }
         }
 
