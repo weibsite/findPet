@@ -209,6 +209,22 @@
        </div>
     </div>
 
+    <!-- 圖片放大檢視 Modal (支援左右滑動) -->
+    <div id="photo-viewer-modal" class="hidden fixed inset-0 z-[12000] bg-black/95 flex flex-col items-center justify-center p-0 touch-none">
+        <div class="relative w-full h-full flex items-center justify-center overflow-hidden" id="photo-viewer-container">
+            <img id="viewer-img" src="" class="max-w-full max-h-[85vh] object-contain transition-transform duration-300 pointer-events-none">
+            <!-- 標題 -->
+            <div id="viewer-title" class="absolute top-4 left-0 w-full text-center text-white text-lg font-bold drop-shadow-[2px_2px_0px_#000] z-10 px-4 pointer-events-none"></div>
+            <!-- 關閉按鈕 -->
+            <button id="viewer-close-btn" class="absolute top-4 right-4 z-20 text-white bg-red-600/80 rounded border-2 border-white px-3 py-1 text-sm font-bold cursor-pointer active:scale-95 shadow-[2px_2px_0px_#000]">關閉 ✕</button>
+            <!-- 左右切換按鈕 (置於下方) -->
+            <div class="absolute bottom-6 left-0 w-full flex justify-center gap-6 z-20 px-4">
+                <button id="viewer-prev-btn" class="pixel-btn px-6 py-3 bg-gray-200 text-black border-2 border-black shadow-[4px_4px_0px_#1a202c] active:shadow-[0px_0px_0px_#1a202c] active:translate-y-1 text-sm sm:text-base whitespace-nowrap">&lt; 上一張</button>
+                <button id="viewer-next-btn" class="pixel-btn px-6 py-3 bg-gray-200 text-black border-2 border-black shadow-[4px_4px_0px_#1a202c] active:shadow-[0px_0px_0px_#1a202c] active:translate-y-1 text-sm sm:text-base whitespace-nowrap">下一張 &gt;</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 步數面板與禮物面板 -->
     <div class="absolute bottom-10 right-4 z-[2000] flex flex-col gap-2 items-end pointer-events-none">
         <div id="floating-gift-container" class="hidden flex-col items-center cursor-pointer pointer-events-auto transition-transform active:scale-95 hover:scale-105 mb-2">
@@ -325,7 +341,9 @@
                     { url: "https://images.unsplash.com/photo-1543466835-00a7907e9de1", title: "剛洗完澡的樣子" },
                     { url: "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e", title: "" }
                 ],
-                videos: [],
+                videos: [
+                    { url: "https://www.w3schools.com/html/mov_bbb.mp4", title: "平常走路的樣子" }
+                ],
                 announcement: "【阿妹協尋】\n請大家在台南地區多加留意，如果有看到疑似阿妹的身影，請不要驚擾，立即聯絡我們！\n重點熱區：台南公園周邊。"
             },
             "烏尼": { 
@@ -410,6 +428,12 @@
         let viewportFetchTimer = null;
 
         let isAnnounceCollapsed = localStorage.getItem('dogMap_announceCollapsed') === 'true';
+
+        // --- 照片全螢幕檢視器狀態 ---
+        let viewerPhotos = [];
+        let currentViewerIndex = 0;
+        let touchStartX = 0;
+        let touchEndX = 0;
 
         // --- 基礎函數與 Modals ---
         const customModal = document.getElementById('custom-modal'), customModalText = document.getElementById('custom-modal-text');
@@ -547,7 +571,11 @@
             document.getElementById('gallery-modal').classList.remove('hidden');
         });
 
-        document.getElementById('close-gallery-btn').addEventListener('click', () => document.getElementById('gallery-modal').classList.add('hidden'));
+        document.getElementById('close-gallery-btn').addEventListener('click', () => {
+            // 清空內容以停止影片背景播放
+            document.getElementById('gallery-content').innerHTML = '';
+            document.getElementById('gallery-modal').classList.add('hidden');
+        });
         document.getElementById('tab-photos').addEventListener('click', () => renderGallery('photos'));
         document.getElementById('tab-videos').addEventListener('click', () => renderGallery('videos'));
 
@@ -563,11 +591,16 @@
                 if (!proj.photos || proj.photos.length === 0) {
                     content.innerHTML = '<div class="text-center text-gray-500 font-bold mt-10">目前沒有相片</div>';
                 } else {
-                    proj.photos.forEach(item => {
+                    proj.photos.forEach((item, index) => {
                         const imgObj = typeof item === 'string' ? { url: item } : item;
                         const container = document.createElement('div');
-                        container.className = "mb-4 border-2 border-black shadow-[4px_4px_0px_#1a202c] bg-white";
+                        container.className = "mb-4 border-2 border-black shadow-[4px_4px_0px_#1a202c] bg-white cursor-pointer active:translate-y-1 transition-transform";
                         
+                        // 點擊打開放大檢視器
+                        container.addEventListener('click', () => {
+                            openPhotoViewer(index, proj.photos);
+                        });
+
                         const img = document.createElement('img');
                         img.src = imgObj.url;
                         img.className = "w-full object-cover border-b-2 border-black block";
@@ -603,15 +636,81 @@
                             container.appendChild(titleDiv);
                         }
 
-                        const a = document.createElement('a');
-                        a.href = vidObj.url;
-                        a.target = "_blank";
-                        a.className = "pixel-btn block text-center py-2 text-xs bg-gray-200 text-gray-800 no-underline";
-                        a.innerText = "▶ 點擊開啟影片連結";
-                        container.appendChild(a);
+                        // 原生 HTML5 影片播放器 (內建右下角全螢幕按鈕)
+                        const videoEl = document.createElement('video');
+                        videoEl.src = vidObj.url;
+                        videoEl.controls = true;
+                        videoEl.className = "w-full border-2 border-black bg-black";
+                        container.appendChild(videoEl);
 
                         content.appendChild(container);
                     });
+                }
+            }
+        }
+
+        // ================= 全螢幕照片檢視器邏輯 =================
+        function openPhotoViewer(index, photos) {
+            viewerPhotos = photos;
+            currentViewerIndex = index;
+            updatePhotoViewer();
+            document.getElementById('photo-viewer-modal').classList.remove('hidden');
+        }
+
+        function updatePhotoViewer() {
+            if (viewerPhotos.length === 0) return;
+            const imgObj = typeof viewerPhotos[currentViewerIndex] === 'string' 
+                ? { url: viewerPhotos[currentViewerIndex], title: "" } 
+                : viewerPhotos[currentViewerIndex];
+            
+            document.getElementById('viewer-img').src = imgObj.url;
+            document.getElementById('viewer-title').innerText = imgObj.title || "";
+            
+            document.getElementById('viewer-prev-btn').style.opacity = currentViewerIndex > 0 ? "1" : "0.5";
+            document.getElementById('viewer-next-btn').style.opacity = currentViewerIndex < viewerPhotos.length - 1 ? "1" : "0.5";
+        }
+
+        document.getElementById('viewer-close-btn').addEventListener('click', () => {
+            document.getElementById('photo-viewer-modal').classList.add('hidden');
+        });
+
+        document.getElementById('viewer-prev-btn').addEventListener('click', () => {
+            if (currentViewerIndex > 0) {
+                currentViewerIndex--;
+                updatePhotoViewer();
+            }
+        });
+
+        document.getElementById('viewer-next-btn').addEventListener('click', () => {
+            if (currentViewerIndex < viewerPhotos.length - 1) {
+                currentViewerIndex++;
+                updatePhotoViewer();
+            }
+        });
+
+        // 觸控滑動事件 (左右滑動切換相片)
+        const viewerContainer = document.getElementById('photo-viewer-container');
+        viewerContainer.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+        viewerContainer.addEventListener('touchend', e => {
+            touchEndX = e.changedTouches[0].screenX;
+            handleViewerSwipe();
+        });
+
+        function handleViewerSwipe() {
+            const SWIPE_THRESHOLD = 50;
+            if (touchEndX < touchStartX - SWIPE_THRESHOLD) {
+                // 向左滑 -> 下一張
+                if (currentViewerIndex < viewerPhotos.length - 1) {
+                    currentViewerIndex++;
+                    updatePhotoViewer();
+                }
+            } else if (touchEndX > touchStartX + SWIPE_THRESHOLD) {
+                // 向右滑 -> 上一張
+                if (currentViewerIndex > 0) {
+                    currentViewerIndex--;
+                    updatePhotoViewer();
                 }
             }
         }
